@@ -7,6 +7,7 @@ from gallery_commands import (
     parse_aliases,
     parse_view_target,
     replace_command_aliases,
+    resolve_exact_gallery_category,
     resolve_gallery_category_query,
     sanitize_component,
     strip_at_prefix,
@@ -84,6 +85,17 @@ def test_resolve_gallery_category_query_prefers_longest_fuzzy_match_then_alias()
 def test_resolve_gallery_category_query_returns_sanitized_alias_when_no_categories_exist():
     assert resolve_gallery_category_query("爱莉", [], {"爱莉": "Airi/表情"}) == "Airi_表情"
     assert resolve_gallery_category_query("", [], {}) == ""
+
+
+def test_resolve_exact_gallery_category_accepts_only_exact_category_or_alias():
+    categories = ["Airi", "林小满"]
+    aliases = {"爱莉": "Airi", "小满图": "林小满"}
+
+    assert resolve_exact_gallery_category("airi", categories, aliases) == "Airi"
+    assert resolve_exact_gallery_category("小满图", categories, aliases) == "林小满"
+    assert resolve_exact_gallery_category("看看你的照片", categories, aliases) == ""
+    assert resolve_exact_gallery_category("林小满的照片", categories, aliases) == ""
+    assert resolve_exact_gallery_category("失效别名", categories, {"失效别名": "missing"}) == ""
 
 
 def test_extract_view_target_preserves_prefix_mode_boundary():

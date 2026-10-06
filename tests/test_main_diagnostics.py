@@ -956,6 +956,122 @@ def test_view_command_helpers_in_main_delegate_to_gallery_commands(
     )
 
 
+def _construct_no_prefix_gallery(main_module, monkeypatch, tmp_path):
+    plugin, _ = construct_plugin(
+        main_module,
+        monkeypatch,
+        tmp_path,
+        {
+            "view_command_mode": "no_prefix",
+            "category_aliases": ["小满图=林小满"],
+        },
+    )
+    (plugin.gallery_root / "林小满").mkdir()
+    # A default folder must not make arbitrary prose a gallery command.
+    (plugin.gallery_root / "default").mkdir()
+    return plugin
+
+
+def test_no_prefix_browse_accepts_exact_categories_aliases_numbers_and_ranges(
+    main_module, monkeypatch, tmp_path
+):
+    plugin = _construct_no_prefix_gallery(main_module, monkeypatch, tmp_path)
+
+    assert plugin._parse_action("看看林小满") == ("view_category", "林小满")
+    assert plugin._parse_action("看看小满图") == ("view_category", "林小满")
+    assert plugin._parse_action("看全部林小满") == ("view_all_category", "林小满")
+    assert plugin._parse_action("看看123") == ("view_number", 123)
+    assert plugin._parse_action("看100-110") == ("view_range", (100, 110))
+    assert plugin._parse_action("看看林小满 2") == (
+        "view_multiple",
+        ("林小满", 2),
+    )
+    assert plugin._parse_action("看看小满图 2") == (
+        "view_multiple",
+        ("林小满", 2),
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    (
+        "看看你的照片",
+        "看看你的自拍",
+        "看看你",
+        "看看你今天穿什么",
+        "看看林小满的照片给我",
+        "看看你的照片 2",
+        "看全部你的照片",
+    ),
+)
+def test_no_prefix_natural_language_does_not_become_gallery_action(
+    main_module, monkeypatch, tmp_path, message
+):
+    plugin = _construct_no_prefix_gallery(main_module, monkeypatch, tmp_path)
+
+    assert plugin._parse_action(message) is None
+
+
+def test_no_prefix_invalid_multiple_does_not_fallback_to_default_category(
+    main_module, monkeypatch, tmp_path
+):
+    plugin = _construct_no_prefix_gallery(main_module, monkeypatch, tmp_path)
+
+    assert plugin._parse_action("看看你的照片 2") is None
+    assert plugin._parse_action("看看default") == ("view_category", "default")
+
+
+def test_gallery_event_stops_only_after_a_valid_no_prefix_action(
+    main_module, monkeypatch, tmp_path
+):
+    plugin = _construct_no_prefix_gallery(main_module, monkeypatch, tmp_path)
+
+    class Event:
+        def __init__(self, message):
+            self.message_str = message
+            self.stopped = False
+
+        def stop_event(self):
+            self.stopped = True
+
+    invalid = Event("看看你的照片")
+    valid = Event("看看林小满")
+
+    asyncio.run(plugin.handle_gallery_message(invalid))
+    asyncio.run(plugin.handle_gallery_message(valid))
+
+    assert invalid.stopped is False
+    assert valid.stopped is True
+
+
+def test_gallery_send_function_tool_regression(main_module, monkeypatch, tmp_path):
+    plugin = _construct_no_prefix_gallery(main_module, monkeypatch, tmp_path)
+    image = tmp_path / "sent.png"
+    plugin._iter_category_images = lambda category: [image]
+
+    class Event:
+        message_str = ""
+
+        def __init__(self):
+            self.sent = []
+
+        def image_result(self, path):
+            return ("image", path)
+
+        async def send(self, result):
+            self.sent.append(result)
+
+    event = Event()
+    context = types.SimpleNamespace(context=types.SimpleNamespace(event=event))
+
+    result = asyncio.run(
+        main_module.GalleryTool(plugin).call(context, category="林小满", count=1)
+    )
+
+    assert result == "已从 林小满 分类发送 1 张图片。"
+    assert event.sent == [("image", str(image))]
+
+
 
 def test_main_wires_gallery_sync_as_single_state_owner(main_module, monkeypatch, tmp_path):
     from gallery_sync import GallerySync

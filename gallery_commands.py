@@ -116,6 +116,45 @@ def resolve_gallery_category_query(
     return ""
 
 
+def resolve_exact_gallery_category(
+    query: str,
+    categories: Sequence[str],
+    category_aliases: Mapping[str, str],
+) -> str:
+    """Resolve only an exact category name or configured alias.
+
+    This deliberately does not use the fuzzy matching used by LLM-facing
+    gallery queries.  In no-prefix command mode, a conversational message
+    beginning with ``看`` must not become a gallery command unless its target
+    is unambiguously a configured category or alias.
+    """
+    query = str(query or "").strip()
+    if not query:
+        return ""
+
+    category_by_lower = {
+        str(category).strip().lower(): str(category).strip()
+        for category in categories
+        if str(category).strip()
+    }
+    if not category_by_lower:
+        return ""
+
+    direct = category_by_lower.get(query.lower())
+    if direct:
+        return direct
+
+    alias_to_category = {
+        str(alias).strip().lower(): str(category).strip()
+        for alias, category in category_aliases.items()
+        if str(alias).strip() and str(category).strip()
+    }
+    resolved = alias_to_category.get(query.lower())
+    if not resolved:
+        return ""
+    return category_by_lower.get(resolved.lower(), "")
+
+
 def match_view_command(normalized: str, *, use_prefix: bool) -> re.Match[str] | None:
     if use_prefix:
         return re.match(r"^/看(?:看)?\s*(.+)$", normalized)

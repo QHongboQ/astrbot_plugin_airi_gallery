@@ -1,3 +1,5 @@
+import pytest
+
 import gallery_safety
 from gallery_safety import (
     git_blob_sha,

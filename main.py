@@ -68,6 +68,7 @@ try:
         parse_aliases as _parse_gallery_aliases,
         parse_view_target as _parse_gallery_view_target,
         replace_command_aliases as _replace_gallery_command_aliases,
+        resolve_exact_gallery_category as _resolve_exact_gallery_category_impl,
         resolve_gallery_category_query as _resolve_gallery_category_query_impl,
         sanitize_component as _sanitize_gallery_component,
         strip_at_prefix as _strip_gallery_at_prefix,
@@ -81,6 +82,7 @@ except ImportError:
         parse_aliases as _parse_gallery_aliases,
         parse_view_target as _parse_gallery_view_target,
         replace_command_aliases as _replace_gallery_command_aliases,
+        resolve_exact_gallery_category as _resolve_exact_gallery_category_impl,
         resolve_gallery_category_query as _resolve_gallery_category_query_impl,
         sanitize_component as _sanitize_gallery_component,
         strip_at_prefix as _strip_gallery_at_prefix,
@@ -226,8 +228,8 @@ GITHUB_TREE_CREATE_RETRY_STATUSES = {0, 500, 502, 503, 504}
 GITHUB_TREE_CREATE_RETRY_BASE_DELAY_SECONDS = 1.0
 GITHUB_TREE_CREATE_CHUNK_SIZE = 250
 GITHUB_TREE_MUTATION_CHUNK_SIZE = 100
-CURRENT_PLUGIN_VERSION = "v2.11.15"
-UPDATE_METADATA_URL = "https://raw.githubusercontent.com/Lidure/astrbot_plugin_airi_gallery/main/metadata.yaml"
+CURRENT_PLUGIN_VERSION = "v2.11.16"
+UPDATE_METADATA_URL = "https://raw.githubusercontent.com/QHongboQ/astrbot_plugin_airi_gallery/main/metadata.yaml"
 UPDATE_CACHE_SECONDS = 600.0
 _GIT_REQUEST_STATE = threading.local()
 IMAGE_SUFFIXES = {
@@ -2058,6 +2060,13 @@ class Main(Star):
             self.category_aliases,
         )
 
+    def _resolve_exact_gallery_category(self, query: str) -> str:
+        return _resolve_exact_gallery_category_impl(
+            query,
+            self._list_category_names(),
+            self.category_aliases,
+        )
+
     @staticmethod
     def _strip_at_prefix(text: str) -> str:
         return _strip_gallery_at_prefix(text)
@@ -2300,6 +2309,11 @@ class Main(Star):
             target = view_all_match.group(1).strip()
             if not target:
                 return None
+            if self.view_command_mode != MODE_PREFIX:
+                category = self._resolve_exact_gallery_category(target)
+                if not category:
+                    return None
+                return "view_all_category", category
             return "view_all_category", _sanitize_component(self._resolve_alias(target))
 
         view_match = self._match_view_command(normalized)
@@ -2312,9 +2326,19 @@ class Main(Star):
                 return "view_range", target_value
             if target_kind == "multiple":
                 cat, num = target_value
+                if self.view_command_mode != MODE_PREFIX:
+                    category = self._resolve_exact_gallery_category(cat)
+                    if not category:
+                        return None
+                    return "view_multiple", (category, num)
                 return "view_multiple", (_sanitize_component(self._resolve_alias(cat)), num)
             if target_kind == "number":
                 return "view_number", target_value
+            if self.view_command_mode != MODE_PREFIX:
+                category = self._resolve_exact_gallery_category(target_value)
+                if not category:
+                    return None
+                return "view_category", category
             return "view_category", _sanitize_component(self._resolve_alias(target_value))
 
         return None
